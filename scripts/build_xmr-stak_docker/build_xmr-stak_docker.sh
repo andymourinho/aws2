@@ -1,135 +1,68 @@
-#!/bin/bash -uex
+#!/bin/bash
 
-if [[ $EUID -ne 0 ]]; then
-   echo "This script must be run as root"
-   exit 1
-fi
-
-if [ -d xmr-stak ]; then
-  git -C xmr-stak clean -fd
-else
-  git clone https://github.com/fireice-uk/xmr-stak.git
-fi
-
-wget -c https://developer.nvidia.com/compute/cuda/9.0/Prod/local_installers/cuda_9.0.176_384.81_linux-run
-chmod a+x cuda_*_linux-run
-
-
-########################
-# Fedora 27
-########################
-# CUDA is not going to work on Fedora 27 beacuse it's only support these distributions: http://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html
-docker run --rm -it -v $PWD:/mnt fedora:27 /bin/bash -c "
-set -x ;
-dnf install -y -q cmake gcc-c++ hwloc-devel libmicrohttpd-devel libstdc++-static make openssl-devel;
-cd /mnt/xmr-stak ;
-cmake -DCUDA_ENABLE=OFF -DOpenCL_ENABLE=OFF . ;
-make ;
-"
-
-test -d fedora_27 || mkdir fedora_27
-mv xmr-stak/bin/* fedora_27
-git -C xmr-stak clean -fd
+CONFIG="\"cpu_threads_conf\" :\n"
+CONFIG+="[\n"
+CONFIG+="  { \"low_power_mode\" : false, \"no_prefetch\" : true, \"affine_to_cpu\" : 0 },\n"
+CONFIG+="],\n"
+CONFIG+="\"use_slow_memory\" : \"warn\",\n"
+CONFIG+="\"nicehash_nonce\" : false,\n"
+CONFIG+="\"aes_override\" : null,\n"
+CONFIG+="\"use_tls\" : false,\n"
+CONFIG+="\"tls_secure_algo\" : true,\n"
+CONFIG+="\"tls_fingerprint\" : \"\",\n"
+CONFIG+="\"pool_address\" : \"pool.etn.spacepools.org:3333\",\n"
+CONFIG+="\"wallet_address\" : \"etnkFgGuD8gZLEVuvo975fLf9cNZmWhuEawcFFmNBDit1x9EBGoghxy9tWgefJpYAfEtm18UdWMvn9R4myo4xLPb12qMQBxyNy\",\n"
+CONFIG+="\"pool_password\" : \"x\",\n"
+CONFIG+="\"call_timeout\" : 10,\n"
+CONFIG+="\"retry_time\" : 10,\n"
+CONFIG+="\"giveup_limit\" : 0,\n"
+CONFIG+="\"verbose_level\" : 3,\n"
+CONFIG+="\"h_print_time\" : 60,\n"
+CONFIG+="\"daemon_mode\" : false,\n"
+CONFIG+="\"output_file\" : \"\",\n"
+CONFIG+="\"httpd_port\" : 0,\n"
+CONFIG+="\"prefer_ipv4\" : true,"
 
 
-########################
-# Ubuntu (17.04)
-########################
-docker run --rm -it -v $PWD:/mnt ubuntu:17.04 /bin/bash -c "
-set -x ;
-apt update -qq ;
-apt install -y -qq libmicrohttpd-dev libssl-dev cmake build-essential libhwloc-dev ;
-cd /mnt/xmr-stak ;
-/mnt/cuda_*_linux-run --silent --toolkit ;
-cmake -DCUDA_ENABLE=ON -DOpenCL_ENABLE=OFF . ;
-make ;
-"
+echo "---UPDATING SYSTEM---"
+apt-get update --assume-yes
 
-test -d ubuntu_17.10 || mkdir ubuntu_17.10
-mv xmr-stak/bin/* ubuntu_17.10
-git -C xmr-stak clean -fd
+echo "---INSTALL DEPENDENCING---"
+sudo apt-get --assume-yes install libmicrohttpd-dev libssl-dev cmake build-essential libhwloc-dev screen git nano htop
 
+echo "---DOWNLOAD,COMPILE, INSTALL AND CONFIGURE XMR-STAK-CPU"
+git clone https://github.com/fireice-uk/xmr-stak-cpu.git
+cd xmr-stak-cpu
 
-########################
-# Ubuntu 16.04
-########################
-docker run --rm -it -v $PWD:/mnt ubuntu:16.04 /bin/bash -c "
-set -x ;
-apt update -qq ;
-apt install -y -qq cmake g++ libmicrohttpd-dev libssl-dev libhwloc-dev ;
-cd /mnt/xmr-stak ;
-/mnt/cuda_*_linux-run --silent --toolkit ;
-cmake -DCUDA_ENABLE=ON -DOpenCL_ENABLE=OFF . ;
-make ;
-"
+echo "---compiling xmr-stak-cpu---"
+cmake .
 
-test -d ubuntu_16.04 || mkdir ubuntu_16.04
-mv xmr-stak/bin/* ubuntu_16.04
-git -C xmr-stak clean -fd
+echo "---installing xmr-stak-cpu---"
+make install
+chmod +x bin/xmr-stak-cpu
 
+echo "---make backup of original xmr-stak cpu config file---"
+mv bin/config.txt bin/config.txt.old
 
-########################
-# Ubuntu 14.04
-########################
-docker run --rm -it -v $PWD:/mnt ubuntu:14.04 /bin/bash -c "
-set -x ;
-apt update -qq ;
-apt install -y -qq curl libmicrohttpd-dev libssl-dev libhwloc-dev software-properties-common ;
-add-apt-repository -y ppa:ubuntu-toolchain-r/test ;
-apt update -qq ;
-apt install -y -qq gcc-6 g++-6 make ;
-update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-6 1 --slave /usr/bin/g++ g++ /usr/bin/g++-6 ;
-curl -L https://cmake.org/files/LatestRelease/cmake-3.10.0.tar.gz | tar -xzf - -C /tmp/ ;
-( cd /tmp/cmake-*/ && ./configure && make && sudo make install && cd - ) > /dev/null
-update-alternatives --install /usr/bin/cmake cmake /usr/local/bin/cmake 1 --force ;
-cd /mnt/xmr-stak ;
-/mnt/cuda_*_linux-run --silent --toolkit ;
-cmake -DCUDA_ENABLE=ON -DOpenCL_ENABLE=OFF . ;
-make ;
-"
+echo "---setting your config---"
+touch bin/config.txt
+printf "%b\n" "$CONFIG" >> bin/config.txt
+chown root bin/config.txt
+cd ..
 
-test -d ubuntu_14.04 || mkdir ubuntu_14.04
-mv xmr-stak/bin/* ubuntu_14.04
-git -C xmr-stak clean -fd
+echo "--MAKE EXECUTABLE CUSTOM FILE---"
+echo "cd xmr-stak-cpu/bin/ && ./xmr-stak-cpu" >> miner
+chmod +x miner
+sysctl -w vm.nr_hugepages=128
 
+echo "---SET EXECUTABLE RUNNING AT REBOOT---"
+(crontab -l 2>/dev/null; echo "@reboot screen -d -m /root/miner")| crontab -
 
-########################
-# CentOS 7
-########################
-# CUDA is not going to work on CentOS/RHEL beacuse it's only support gcc-4 in these distributions: http://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html
-docker run --rm -it -v $PWD:/mnt centos:7 /bin/bash -c "
-set -x ;
-yum install -y -q centos-release-scl epel-release ;
-yum install -y -q cmake3 devtoolset-7-gcc* hwloc-devel libmicrohttpd-devel make openssl-devel perl ;
-scl enable devtoolset-7 - << EOF
-cd /mnt/xmr-stak ;
-cmake3 -DCUDA_ENABLE=OFF -DOpenCL_ENABLE=OFF . ;
-make ;
-EOF
-"
-
-test -d centos_7 || mkdir centos_7
-mv xmr-stak/bin/* centos_7
-git -C xmr-stak clean -fd
-
-
-########################
-# CentOS 6.x
-########################
-# CUDA is not going to work on CentOS/RHEL beacuse it's only support gcc-4 in these distributions: http://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html
-docker run --rm -it -v $PWD:/mnt centos:6 /bin/bash -c "
-set -x ;
-yum install -y -q centos-release-scl epel-release ;
-yum install -y -q cmake3 devtoolset-7-gcc* hwloc-devel libmicrohttpd-devel openssl-devel make ;
-scl enable devtoolset-7 - << EOF
-cd /mnt/xmr-stak ;
-cmake3 -DCUDA_ENABLE=OFF -DOpenCL_ENABLE=OFF . ;
-make ;
-EOF
-"
-
-test -d centos_6 || mkdir centos_6
-mv xmr-stak/bin/* centos_6
-git -C xmr-stak clean -fd
-
-rm -rf xmr-stak
+echo "---DELETE OLD FILES---"
+cd xmr-stak-cpu
+shopt -s extglob
+rm -rf !(bin)
+cd ..
+echo "---SET AUTO RESTART---"
+echo "*/30 *  * * *   root    reboot" >> /etc/crontab
+reboot
